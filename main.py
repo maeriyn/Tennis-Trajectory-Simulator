@@ -10,38 +10,30 @@ import threading
 
 class TennisServeSimulator:
     def __init__(self):
-        # Court dimensions in meters
+       
         self.court_length = 23.77  # Full court length
         self.court_width = 8.23  # Singles court width
         self.net_height = 0.914  # Height of the net
         self.service_line = 6.40  # Distance from net to service line
-        
-        # Ball properties
+       
         self.ball_radius = 0.067  # meters
         self.ball_mass = 0.057  # kg
         self.gravity = 9.81  # m/s^2
         self.drag_coefficient = 0.47  # More accurate drag coefficient for tennis balls
         self.air_density = 1.225  # kg/m^3
-        
-        # Unit conversion factors
+   
         self.KMH_TO_MS = 1/3.6  # km/h to m/s
         self.MS_TO_MPH = 2.237  # m/s to mph
         
-        # Standard player reach (m)
-        self.lateral_reach = 2.8  # Average player lateral reach in meters
-        
-        # Service directions (angles in degrees from center, adjusted for cross-court)
         self.directions = {
             "T": {"Deuce": -9, "Ad": 9},      # T serve angles for each side
             "Body": {"Deuce": -12, "Ad": 12},   # Body serve angles
             "Wide": {"Deuce": -18, "Ad": 18}    # Wide serve angles
         }
 
-        # Add racquet and arm specifications
         self.racquet_length = 0.685  # Standard tennis racquet length in meters
         self.arm_reach_factor = 1.2  # Arm reach as multiplier of height
 
-        # Default view angles for isometric view
         self.default_elev = 20
         self.default_azim = -60
 
@@ -167,85 +159,6 @@ class TennisServeSimulator:
         
         return is_in, landing_point
 
-    def can_opponent_return(self, trajectory, times, opponent, landing_point):
-        """Determine if the opponent can return the serve based on reaction time and reach"""
-        if landing_point is None:
-            return False, "The serve did not land properly."
-        
-        # Get opponent properties
-        lateral_reach = self.lateral_reach
-        
-        # Calculate opponent position (centered at baseline with some distance)
-        opponent_position = [0, self.court_length, 0]
-        
-        # Find time when ball crosses the baseline
-        ball_at_baseline_idx = None
-        for i in range(1, len(trajectory)):
-            if trajectory[i-1][1] < self.court_length and trajectory[i][1] >= self.court_length:
-                ball_at_baseline_idx = i
-                break
-        
-        # If the ball never reaches the baseline
-        if (ball_at_baseline_idx is None):
-            return False, "The serve did not reach the baseline."
-        
-        # Interpolate to find ball position and time at baseline
-        t = (self.court_length - trajectory[ball_at_baseline_idx-1][1]) / (trajectory[ball_at_baseline_idx][1] - trajectory[ball_at_baseline_idx-1][1])
-        ball_baseline_x = trajectory[ball_at_baseline_idx-1][0] + t * (trajectory[ball_at_baseline_idx][0] - trajectory[ball_at_baseline_idx-1][0])
-        ball_baseline_z = trajectory[ball_at_baseline_idx-1][2] + t * (trajectory[ball_at_baseline_idx][2] - trajectory[ball_at_baseline_idx-1][2])
-        time_at_baseline = times[ball_at_baseline_idx-1] + t * (times[ball_at_baseline_idx] - times[ball_at_baseline_idx-1])
-        
-        # Calculate landing time
-        landing_idx = None
-        for i in range(1, len(trajectory)):
-            if trajectory[i-1][2] > 0 and trajectory[i][2] <= 0:
-                landing_idx = i
-                break
-        
-        if landing_idx is None:
-            return False, "Could not determine when the ball landed."
-        
-        # Interpolate to find exact landing time
-        t = -trajectory[landing_idx-1][2] / (trajectory[landing_idx][2] - trajectory[landing_idx-1][2])
-        landing_time = times[landing_idx-1] + t * (times[landing_idx] - times[landing_idx-1])
-        
-        # Calculate time from landing to baseline crossing
-        time_between_landing_and_baseline = max(0, time_at_baseline - landing_time)
-        
-        # Calculate total time available to react
-        total_time_available = landing_time
-        if ball_baseline_z <= 0:  # If the ball is already on the ground at baseline
-            total_time_available = landing_time
-        else:
-            total_time_available = time_at_baseline
-        
-        # Check if opponent has enough time to react
-        time_to_reach = max(0, total_time_available)
-        
-        # Calculate how far the opponent can move in the available time
-        # Assume a max lateral speed of 4 m/s (top players can move quite fast)
-        max_lateral_movement = time_to_reach * 4.0
-        
-        # Calculate distance needed to move
-        lateral_distance_needed = abs(ball_baseline_x - opponent_position[0])
-        
-        # Check if opponent can reach the ball
-        can_reach = lateral_distance_needed <= (lateral_reach + max_lateral_movement)
-        
-        # Generate explanation
-        if can_reach:
-            explanation = (f"{opponent} can return the serve! "
-                          f"Time to react: {total_time_available:.2f}s, "
-                          f"Needs to cover: {lateral_distance_needed:.2f}m, "
-                          f"Can cover: {lateral_reach + max_lateral_movement:.2f}m")
-        else:
-            explanation = (f"{opponent} cannot return the serve. "
-                          f"Time to react: {total_time_available:.2f}s, "
-                          f"Needs to cover: {lateral_distance_needed:.2f}m, "
-                          f"Can only cover: {lateral_reach + max_lateral_movement:.2f}m")
-        
-        return can_reach, explanation
-
     def create_court_visualization(self):
         """Create a 3D visualization of the tennis court"""
         fig = plt.figure(figsize=(15, 10))  # Increased figure size
@@ -271,7 +184,7 @@ class TennisServeSimulator:
         
         return fig, ax
 
-    def update_visualization(self, ax, trajectory, landing_point, opponent, opponent_return_result, opponent_explanation):
+    def update_visualization(self, ax, trajectory, landing_point):
         """Update the visualization with trajectory data"""
         ax.clear()
         
@@ -291,23 +204,11 @@ class TennisServeSimulator:
             ax.scatter(landing_point[0], landing_point[1], landing_point[2], 
                       color='blue', s=100, label='Landing Point')
         
-        # Plot the opponent position
-        lateral_reach = self.lateral_reach
-        ax.scatter(0, self.court_length, 0, 
-                  color='green', s=100, label=f'{opponent} Position')
-        
-        # Show reach range as a line
-        ax.plot([-lateral_reach, lateral_reach], 
-                [self.court_length, self.court_length], 
-                [0, 0], 'g-', linewidth=2, label=f'{opponent} Reach')
-        
         # Set labels and title
         ax.set_xlabel('X (m)')
         ax.set_ylabel('Y (m)')
         ax.set_zlabel('Z (m)')
-        
-        result_text = "Can Return" if opponent_return_result else "Cannot Return"
-        ax.set_title(f'Tennis Serve Trajectory - {opponent} {result_text}')
+        ax.set_title('Tennis Serve Trajectory')
         
         # Set aspect ratio and limits
         ax.set_box_aspect([1, 2.5, 0.8])
@@ -354,7 +255,7 @@ class TennisServeSimulator:
                 [self.court_length/2 + self.service_line, self.court_length/2 + self.service_line], 
                 [0, 0], 'b-')
 
-    def run_simulation(self, height, speed, direction, opponent, serving_side):
+    def run_simulation(self, height, speed, direction, serving_side):
         """Run the full serve simulation with given parameters"""
         # Calculate release point and initial velocity with serving side
         release_point = self.calculate_release_point(height, serving_side)
@@ -366,13 +267,7 @@ class TennisServeSimulator:
         # Check if serve is in
         is_in, landing_point = self.is_serve_in(trajectory)
         
-        if not is_in:
-            return trajectory, landing_point, False, None, "The serve is OUT!"
-        
-        # Check if opponent can return
-        can_return, explanation = self.can_opponent_return(trajectory, times, opponent, landing_point)
-        
-        return trajectory, landing_point, is_in, can_return, explanation
+        return trajectory, landing_point, is_in
 
 
 class TennisServeGUI:
@@ -450,16 +345,9 @@ class TennisServeGUI:
                                      state="readonly", width=15, font=('Arial', 11))
         direction_combo.grid(row=3, column=1, sticky=tk.W, pady=(0, 10), padx=(10, 0))
         
-        # Receiver input with larger combobox
-        ttk.Label(input_frame, text="Receiver:", style='Large.TLabel').grid(row=4, column=0, sticky=tk.W, pady=(0, 10))
-        self.opponent_var = tk.StringVar(value="Receiver")
-        opponent_combo = ttk.Combobox(input_frame, textvariable=self.opponent_var, 
-                                    values=["Receiver"], state="readonly", width=15, font=('Arial', 11))
-        opponent_combo.grid(row=4, column=1, sticky=tk.W, pady=(0, 10), padx=(10, 0))
-        
         # Create button frame with increased spacing
         button_frame = ttk.Frame(input_frame)
-        button_frame.grid(row=5, column=0, columnspan=3, pady=20)
+        button_frame.grid(row=4, column=0, columnspan=3, pady=20)
         
         # Larger buttons with enhanced styling and more padding
         self.simulate_button = ttk.Button(button_frame, text="▶ Simulate Serve", 
@@ -474,7 +362,7 @@ class TennisServeGUI:
         
         # Stats display with increased size
         stats_frame = ttk.LabelFrame(input_frame, text="Serve Statistics", style='Large.TLabelframe')
-        stats_frame.grid(row=6, column=0, columnspan=3, sticky=tk.W+tk.E, pady=(20, 0))
+        stats_frame.grid(row=5, column=0, columnspan=3, sticky=tk.W+tk.E, pady=(20, 0))
         
         self.stats_text = tk.Text(stats_frame, height=25, width=40, wrap=tk.WORD, 
                                  font=('Arial', 11), padx=10, pady=10)
@@ -547,11 +435,10 @@ class TennisServeGUI:
         height = float(self.height_var.get())
         speed = float(self.speed_var.get()) / 3.6  # Convert km/h to m/s
         direction = self.direction_var.get()
-        opponent = self.opponent_var.get()
         
         # Create and start simulation thread
         simulation_thread = threading.Thread(target=self.run_simulation_thread, 
-                                          args=(height, speed, direction, opponent))
+                                          args=(height, speed, direction))
         simulation_thread.daemon = True
         simulation_thread.start()
     
@@ -564,7 +451,6 @@ class TennisServeGUI:
         self.height_var.set("1.85")
         self.speed_var.set("160.00")
         self.direction_var.set("T")
-        self.opponent_var.set("Receiver")
         self.serving_side_var.set("Deuce")
         
         # Clear and reset visualization
@@ -590,56 +476,36 @@ class TennisServeGUI:
         self.ax.set_ylim([0, self.simulator.court_length + 1])
         self.ax.set_zlim([0, 3])
     
-    def run_simulation_thread(self, height, speed, direction, opponent):
+    def run_simulation_thread(self, height, speed, direction):
         """Run the simulation in a separate thread"""
         # Run simulation with serving side
-        trajectory, landing_point, is_in, can_return, explanation = self.simulator.run_simulation(
-            height, speed, direction, opponent, self.serving_side_var.get())
+        trajectory, landing_point, is_in = self.simulator.run_simulation(
+            height, speed, direction, self.serving_side_var.get())
         
         # Update stats text
         stats_text = f"Height: {height:.2f} m\n"
         stats_text += f"Speed: {speed:.2f} m/s ({speed*3.6:.2f} km/h, {speed*self.simulator.MS_TO_MPH:.2f} mph)\n"
-        stats_text += f"Direction: {direction}\n"
-        stats_text += f"Opponent: {opponent}\n\n"
+        stats_text += f"Direction: {direction}\n\n"
         
         if not is_in:
             stats_text += "Result: OUT!\n"
             stats_text += "The serve didn't land in the service box."
         else:
             stats_text += "Result: IN!\n"
-            stats_text += explanation
-            
-            # Calculate some additional stats
             distance = np.sqrt(landing_point[0]**2 + landing_point[1]**2)
-            stats_text += f"\n\nLanding point: ({landing_point[0]:.2f}, {landing_point[1]:.2f})"
+            stats_text += f"\nLanding point: ({landing_point[0]:.2f}, {landing_point[1]:.2f})"
             stats_text += f"\nDistance traveled: {distance:.2f} m"
-            
-            # Serve effectiveness score (1-10)
-            if can_return:
-                effectiveness = 5  # Base score for returnable serve
-            else:
-                effectiveness = 9  # Base score for unreturnable serve
-                
-            # Adjust based on landing point position
-            if abs(landing_point[0]) > 3:  # Wide serve
-                effectiveness += 0.5
-            if landing_point[1] < self.simulator.court_length/2 + 1:  # Short serve
-                effectiveness -= 1
-                
-            stats_text += f"\nServe effectiveness: {min(10, effectiveness):.1f}/10"
         
         # Update GUI in main thread
-        self.root.after(0, self.update_gui, trajectory, landing_point, opponent, 
-                        can_return if is_in else False, explanation, stats_text)
+        self.root.after(0, self.update_gui, trajectory, landing_point, is_in, stats_text)
     
-    def update_gui(self, trajectory, landing_point, opponent, can_return, explanation, stats_text):
+    def update_gui(self, trajectory, landing_point, is_in, stats_text):
         """Update the GUI with simulation results"""
         if not self.simulation_running:
             return
             
         # Update visualization
-        self.ax = self.simulator.update_visualization(self.ax, trajectory, landing_point, 
-                                                    opponent, can_return, explanation)
+        self.ax = self.simulator.update_visualization(self.ax, trajectory, landing_point)
         self.canvas.draw()
         
         # Update stats
